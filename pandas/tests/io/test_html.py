@@ -19,6 +19,7 @@ import pandas.util._test_decorators as td
 import pandas as pd
 import pandas._testing as tm
 
+from pandas.io import html as html_module
 from pandas.io.common import file_path_to_url
 
 
@@ -62,6 +63,74 @@ def test_bs4_version_fails(monkeypatch, datapath):
     monkeypatch.setattr(bs4, "__version__", "4.2")
     with pytest.raises(ImportError, match="Pandas requires version"):
         pd.read_html(datapath("io", "data", "html", "spam.html"), flavor="bs4")
+
+
+@pytest.mark.parametrize("flavor", [None, ["lxml", "bs4"]])
+def test_missing_optional_parser_falls_back(monkeypatch, flavor):
+    # GH 30281
+    pytest.importorskip("bs4")
+    pytest.importorskip("html5lib")
+    import_optional_dependency = html_module.import_optional_dependency
+
+    def import_without_lxml(name, *args, **kwargs):
+        if name == "lxml.etree":
+            raise ImportError("lxml is missing")
+        return import_optional_dependency(name, *args, **kwargs)
+
+    monkeypatch.setattr(html_module, "import_optional_dependency", import_without_lxml)
+
+    result = pd.read_html(
+        StringIO("<table><tr><th>A</th></tr><tr><td>1</td></tr></table>"),
+        flavor=flavor,
+    )[0]
+    expected = pd.DataFrame({"A": [1]})
+
+    tm.assert_frame_equal(result, expected)
+
+
+def test_missing_explicit_optional_parser_raises(monkeypatch):
+    # GH 30281
+    def import_missing(name, *args, **kwargs):
+        raise ImportError(f"{name} is missing")
+
+    monkeypatch.setattr(html_module, "import_optional_dependency", import_missing)
+
+    with pytest.raises(ImportError, match="lxml.etree is missing"):
+        pd.read_html(StringIO("<table><tr><td>1</td></tr></table>"), flavor="lxml")
+
+
+def test_all_optional_parsers_missing_raises(monkeypatch):
+    # GH 30281
+    dependencies = []
+
+    def import_missing(name, *args, **kwargs):
+        dependencies.append(name)
+        raise ImportError(f"{name} is missing")
+
+    monkeypatch.setattr(html_module, "import_optional_dependency", import_missing)
+
+    with pytest.raises(ImportError, match="html5lib is missing"):
+        pd.read_html(StringIO("<table><tr><td>1</td></tr></table>"))
+
+    assert dependencies == ["lxml.etree", "html5lib"]
+
+
+def test_parser_import_error_does_not_fall_back(monkeypatch):
+    # GH 30281
+    pytest.importorskip("lxml")
+
+    def raise_import_error(self):
+        raise ImportError("raised while parsing")
+
+    monkeypatch.setattr(
+        html_module._LxmlFrameParser, "parse_tables", raise_import_error
+    )
+
+    with pytest.raises(ImportError, match="raised while parsing"):
+        pd.read_html(
+            StringIO("<table><tr><td>1</td></tr></table>"),
+            flavor=["lxml", "bs4"],
+        )
 
 
 def test_invalid_flavor():

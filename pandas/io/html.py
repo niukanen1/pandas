@@ -964,7 +964,12 @@ def _parse(
 
     retained = None
     for flav in flavor:
-        parser = _parser_dispatch(flav)
+        try:
+            parser = _parser_dispatch(flav)
+        except ImportError as caught:
+            retained = caught
+            continue
+
         p = parser(
             io,
             compiled_match,
