@@ -42,6 +42,7 @@ from pandas.core.computation.ops import (
 )
 from pandas.core.computation.parsing import (
     clean_backtick_quoted_toks,
+    get_backtick_quoted_assigner,
     tokenize_string,
 )
 from pandas.core.computation.scope import Scope
@@ -837,6 +838,14 @@ class Expr:
     @property
     def assigner(self):
         return getattr(self._visitor, "assigner", None)
+
+    @property
+    def target_name(self):
+        """Return the original name of the assignment target."""
+        assigner = self.assigner
+        if assigner is None:
+            return None
+        return get_backtick_quoted_assigner(self.expr, assigner)
 
     def __call__(self):
         return self.terms(self.env)

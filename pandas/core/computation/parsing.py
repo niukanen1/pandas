@@ -220,6 +220,33 @@ def _split_by_backtick(s: str) -> list[tuple[bool, str]]:
     return substrings
 
 
+def get_backtick_quoted_assigner(source: str, assigner: str) -> str:
+    """Return the original name when an assignment target is backtick quoted."""
+    substrings = _split_by_backtick(source)
+    quoted_index = next(
+        (i for i, (is_quoted, _) in enumerate(substrings) if is_quoted), None
+    )
+    if quoted_index is None:
+        return assigner
+
+    prefix = "".join(part for _, part in substrings[:quoted_index])
+    if any(not char.isspace() and char != "(" for char in prefix):
+        return assigner
+
+    suffix = "".join(part for _, part in substrings[quoted_index + 1 :])
+    suffix = suffix.lstrip()
+    while suffix.startswith(")"):
+        suffix = suffix[1:].lstrip()
+    if not suffix.startswith("=") or suffix.startswith("=="):
+        return assigner
+
+    quoted_name = substrings[quoted_index][1][1:-1]
+    if create_valid_python_identifier(quoted_name) != assigner:
+        return assigner
+
+    return quoted_name.replace("``", "`")
+
+
 def tokenize_string(source: str) -> Iterator[tuple[int, str]]:
     """
     Tokenize a Python source code string.

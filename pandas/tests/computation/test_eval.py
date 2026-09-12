@@ -1205,6 +1205,60 @@ class TestOperations:
         result = df.eval("c = a + b")
         tm.assert_frame_equal(result, expected)
 
+    def test_assignment_backtick_quoted_name(self, engine):
+        # GH 47699
+        df = pd.DataFrame({"a": [3, 5], "b": [1, 2]})
+        expected = df.assign(**{"a-b": df["a"] - df["b"]})
+
+        result = df.eval("(`a-b`) = a - b", engine=engine)
+
+        tm.assert_frame_equal(result, expected)
+
+    def test_assignment_backtick_quoted_name_collision(self, engine):
+        # GH 47699
+        encoded_name = "BACKTICK_QUOTED_STRING_a_MINUS_b"
+        df = pd.DataFrame(
+            {"a": [3, 5], "b": [1, 2], "a-b": [10, 20], encoded_name: [30, 40]}
+        )
+        expected = df.copy()
+        expected["a-b"] = expected["a"] - expected["b"]
+
+        result = df.eval("`a-b` = a - b", engine=engine)
+        tm.assert_frame_equal(result, expected)
+
+        expected[encoded_name] = expected["a"] + expected["b"]
+        result = result.eval(f"{encoded_name} = a + b", engine=engine)
+        tm.assert_frame_equal(result, expected)
+
+    @pytest.mark.parametrize("target", ["new-col", "a-b"])
+    def test_assignment_backtick_quoted_name_multiline(self, engine, target):
+        # GH 47699
+        df = pd.DataFrame({"a": [3, 5], "a-b": [10, 20]})
+        expected = df.copy()
+        expected[target] = expected["a"] + 1
+        expected["result"] = expected[target] + 1
+
+        result = df.eval(f"`{target}` = a + 1\nresult = `{target}` + 1", engine=engine)
+
+        tm.assert_frame_equal(result, expected)
+
+    @pytest.mark.filterwarnings("ignore:The inplace keyword in DataFrame.eval")
+    def test_assignment_backtick_quoted_name_inplace(self, engine):
+        # GH 47699
+        df = pd.DataFrame({"a`b": [3, 5], "a": [1, 2]})
+        expected = df.copy()
+        expected["a`b"] = expected["a`b"] + expected["a"]
+        # A doubled backtick escapes one backtick in an expression name.
+        backtick = "`"
+        quoted_name = f"{backtick}a{backtick * 2}b{backtick}"
+
+        result = df.eval(
+            f"{quoted_name} = {quoted_name} + a", engine=engine, inplace=True
+        )
+
+        assert result is None
+        tm.assert_frame_equal(df, expected)
+
     def test_assignment_single_assign_local_overlap(self):
         df = pd.DataFrame(
             np.random.default_rng(2).standard_normal((5, 2)), columns=list("ab")
