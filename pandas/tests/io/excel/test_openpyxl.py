@@ -1,4 +1,8 @@
 import contextlib
+from datetime import (
+    date,
+    datetime,
+)
 from pathlib import Path
 import re
 import uuid
@@ -159,6 +163,36 @@ def test_engine_kwargs_append_data_only(tmp_excel, data_only, expected):
         ).iloc[0, 1]
         == expected
     )
+
+
+@pytest.mark.parametrize("mode", ["w", "a"])
+@pytest.mark.parametrize(
+    "value,format_kwargs,expected",
+    [
+        (date(2026, 9, 12), {"date_format": "DD.MM.YYYY"}, "DD.MM.YYYY"),
+        (
+            datetime(2026, 9, 12, 13, 14, 15),
+            {"datetime_format": "DD.MM.YYYY HH-MM-SS"},
+            "DD.MM.YYYY HH-MM-SS",
+        ),
+        (date(2026, 9, 12), {}, "YYYY-MM-DD"),
+        (datetime(2026, 9, 12, 13, 14, 15), {}, "YYYY-MM-DD HH:MM:SS"),
+    ],
+)
+def test_date_datetime_format(tmp_excel, mode, value, format_kwargs, expected):
+    # GH 44284
+    if mode == "a":
+        openpyxl.Workbook().save(tmp_excel)
+
+    with ExcelWriter(
+        tmp_excel, engine="openpyxl", mode=mode, **format_kwargs
+    ) as writer:
+        pd.DataFrame([value], dtype=object).to_excel(
+            writer, sheet_name="data", index=False, header=False
+        )
+
+    with contextlib.closing(openpyxl.load_workbook(tmp_excel)) as workbook:
+        assert workbook["data"]["A1"].number_format == expected
 
 
 @pytest.mark.parametrize("kwarg_name", ["read_only", "data_only"])
