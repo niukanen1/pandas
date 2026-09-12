@@ -329,6 +329,18 @@ def _wrap_result(
     if is_bool_dtype(dtype):
         # fill_value may be np.bool_
         fill_value = bool(fill_value)
+
+    if name in ("eq", "ne", "lt", "gt", "le", "ge"):
+        # Comparisons can produce values equal to the result's fill value at
+        # positions stored by either operand.  Remove those redundant values so
+        # boolean indexing can rely on the SparseArray's index containing only
+        # values different from the fill value.
+        mask = data != fill_value
+        data = data[mask]
+        indices = sparse_index.indices[mask]
+        kind = "block" if isinstance(sparse_index, BlockIndex) else "integer"
+        sparse_index = make_sparse_index(sparse_index.length, indices, kind)
+
     return SparseArray(
         data, sparse_index=sparse_index, fill_value=fill_value, dtype=dtype
     )

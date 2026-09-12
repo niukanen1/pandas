@@ -303,6 +303,49 @@ class TestSparseArrayArithmetics:
         b = SparseArray(rvalues, dtype=dtype, kind=kind, fill_value=2)
         self._check_comparison_ops(a, b, values, rvalues)
 
+    @pytest.mark.parametrize("other_type", [list, np.array, SparseArray])
+    @pytest.mark.parametrize(
+        "op, other, expected_mask, fill_value, expected",
+        [
+            (
+                operator.gt,
+                [3, 3, 4, 1, 0, 0],
+                [False, False, False, True, False, False],
+                False,
+                [4.0],
+            ),
+            (
+                operator.ne,
+                [1, 0, 0, 4, 0, 0],
+                [False, True, True, False, True, True],
+                True,
+                [2.0, 3.0, np.nan, np.nan],
+            ),
+        ],
+        ids=["false-fill", "true-fill"],
+    )
+    def test_array_comparison_recalculates_indices(
+        self, kind, other_type, op, other, expected_mask, fill_value, expected
+    ):
+        # GH 45284
+        arr = SparseArray([1, 2, 3, 4, np.nan, np.nan], fill_value=np.nan, kind=kind)
+        if other_type is SparseArray:
+            other = SparseArray(other, fill_value=np.nan, kind=kind)
+            expected_kind = kind
+        else:
+            other = other_type(other)
+            expected_kind = "integer"
+
+        mask = op(arr, other)
+
+        expected_mask = SparseArray(
+            expected_mask, fill_value=fill_value, dtype=np.bool_, kind=expected_kind
+        )
+        tm.assert_sp_array_equal(mask, expected_mask)
+        tm.assert_sp_array_equal(
+            arr[mask], SparseArray(expected, fill_value=np.nan, kind=kind)
+        )
+
     @pytest.mark.parametrize("fill_value", [True, False, np.nan])
     def test_bool_same_index(self, kind, fill_value):
         # GH 14000
