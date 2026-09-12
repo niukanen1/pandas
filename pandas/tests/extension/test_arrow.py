@@ -3044,10 +3044,87 @@ def test_dt_strftime(request):
         dtype=ArrowDtype(pa.timestamp("ns")),
     )
     result = ser.dt.strftime("%Y-%m-%dT%H:%M:%S")
+    expected = pd.Series(["2023-01-02T03:00:00", None], dtype=ArrowDtype(pa.string()))
+    tm.assert_series_equal(result, expected)
+
+
+@pytest.mark.parametrize(
+    "unit, value",
+    [("s", 59), ("ms", 59123), ("us", 59123456), ("ns", 59123456789)],
+)
+def test_dt_strftime_seconds(unit, value):
+    # GH#55001
+    pa_dtype = pa.timestamp(unit)
+    ser = pd.Series(ArrowExtensionArray(pa.array([value, -1, None], type=pa_dtype)))
+
+    result = ser.dt.strftime("%S|%f|%N|%%S|%%%S|%S")
+
     expected = pd.Series(
-        ["2023-01-02T03:00:00.000000000", None], dtype=ArrowDtype(pa.string())
+        ["59|%f|%N|%S|%59|59", "59|%f|%N|%S|%59|59", None],
+        dtype=ArrowDtype(pa.string()),
     )
     tm.assert_series_equal(result, expected)
+
+    empty_result = ser.iloc[:0].dt.strftime("%S")
+    tm.assert_series_equal(empty_result, expected.iloc[:0])
+
+    empty_format_result = ser.dt.strftime("")
+    empty_format_expected = pd.Series(["", "", None], dtype=ArrowDtype(pa.string()))
+    tm.assert_series_equal(empty_format_result, empty_format_expected)
+
+
+def test_dt_strftime_seconds_timestamp_range():
+    # These dates are outside the nanosecond-resolution and datetime ranges.
+    pa_dtype = pa.timestamp("s")
+    ser = pd.Series(
+        ArrowExtensionArray(pa.array([95617584000, 253402300800, None], type=pa_dtype))
+    )
+
+    result = ser.dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    expected = pd.Series(
+        ["5000-01-01T00:00:00", "10000-01-01T00:00:00", None],
+        dtype=ArrowDtype(pa.string()),
+    )
+    tm.assert_series_equal(result, expected)
+
+
+def test_dt_strftime_seconds_timezone(request):
+    _require_timezone_database(request)
+    pa_dtype = pa.timestamp("ns", tz="Africa/Monrovia")
+    ser = pd.Series(
+        ArrowExtensionArray(
+            pa.array([-2208988800000000000, -631152000000000000, None], type=pa_dtype)
+        )
+    )
+
+    result = ser.dt.strftime("%Y-%m-%d %H:%M:%S %z")
+
+    expected = pd.Series(
+        ["1899-12-31 23:16:52 -0043", "1949-12-31 23:15:30 -0044", None],
+        dtype=ArrowDtype(pa.string()),
+    )
+    tm.assert_series_equal(result, expected)
+
+
+@pytest.mark.parametrize(
+    "pa_dtype, value, expected",
+    [
+        (pa.date32(), 0, "00"),
+        (pa.date64(), 0, "00.000"),
+        (pa.time32("s"), 59, "59"),
+        (pa.time32("ms"), 59123, "59.123"),
+        (pa.time64("us"), 59123456, "59.123456"),
+        (pa.time64("ns"), 59123456789, "59.123456789"),
+    ],
+)
+def test_dt_strftime_seconds_non_timestamp(pa_dtype, value, expected):
+    arr = ArrowExtensionArray(pa.array([value, None], type=pa_dtype))
+
+    result = arr._dt_strftime("%S")
+
+    expected = ArrowExtensionArray(pa.array([expected, None]))
+    tm.assert_extension_array_equal(result, expected)
 
 
 @pytest.mark.parametrize("method", ["ceil", "floor", "round"])

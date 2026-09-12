@@ -4355,7 +4355,49 @@ class ArrowExtensionArray(
         return self._from_pyarrow_array(result)
 
     def _dt_strftime(self, format: str) -> Self:
-        result = pc.strftime(self._pa_array, format=format)
+        if not pa.types.is_timestamp(self.dtype.pyarrow_dtype):
+            result = pc.strftime(self._pa_array, format=format)
+            return self._from_pyarrow_array(result)
+
+        # PyArrow includes the timestamp's fractional precision in %S. Split
+        # only on active %S directives so escaped directives remain unchanged.
+        format_parts: list[str | None] = []
+        start = 0
+        i = 0
+        while i < len(format) - 1:
+            if format[i] != "%":
+                i += 1
+                continue
+            if format[i + 1] == "%":
+                i += 2
+                continue
+            if format[i + 1] == "S":
+                if start < i:
+                    format_parts.append(format[start:i])
+                format_parts.append(None)
+                i += 2
+                start = i
+                continue
+            i += 2
+
+        if not format_parts:
+            result = pc.strftime(self._pa_array, format=format)
+            return self._from_pyarrow_array(result)
+
+        if start < len(format):
+            format_parts.append(format[start:])
+
+        seconds = pc.utf8_slice_codeunits(
+            pc.strftime(self._pa_array, format="%S"), start=0, stop=2
+        )
+        formatted_parts = [
+            seconds if part is None else pc.strftime(self._pa_array, format=part)
+            for part in format_parts
+        ]
+        if len(formatted_parts) == 1:
+            result = formatted_parts[0]
+        else:
+            result = pc.binary_join_element_wise(*formatted_parts, "")
         return self._from_pyarrow_array(result)
 
     def _round_temporally(
