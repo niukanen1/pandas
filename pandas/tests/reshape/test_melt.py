@@ -1259,6 +1259,87 @@ class TestWideToLong:
         expected.index = expected.index.set_levels(new_level, level=0)
         tm.assert_frame_equal(result, expected)
 
+    @pytest.mark.parametrize("infer_string", [True, False])
+    def test_stubname_equal_j(self, infer_string):
+        # GH 46939
+        with pd.option_context("future.infer_string", infer_string):
+            df = pd.DataFrame(
+                {
+                    "id": [1, 2],
+                    "year1": [10, 20],
+                    "year2": [11, 21],
+                    "keep": ["a", "b"],
+                }
+            )
+            expected = pd.DataFrame(
+                {"keep": ["a", "b", "a", "b"], "year": [10, 20, 11, 21]},
+                index=pd.MultiIndex.from_arrays(
+                    [[1, 2, 1, 2], [1, 1, 2, 2]], names=["id", "year"]
+                ),
+            )
+
+            result = pd.wide_to_long(df, stubnames="year", i="id", j="year")
+
+            expected_dtype = "str" if infer_string else object
+            assert result.columns.dtype == expected_dtype
+            tm.assert_frame_equal(result, expected)
+
+    def test_stubname_equal_j_multiple_stubs_and_ids(self):
+        # GH 46939
+        df = pd.DataFrame(
+            {
+                "id": [1, 2],
+                "group": ["a", "b"],
+                "year_one": [10, 20],
+                "year_two": [11, 21],
+                "score_one": [100, 200],
+                "score_two": [101, 201],
+                "keep": [True, False],
+            }
+        )
+        expected = pd.DataFrame(
+            {
+                "keep": [True, True, False, False],
+                "year": [10, 11, 20, 21],
+                "score": [100, 101, 200, 201],
+            },
+            index=pd.MultiIndex.from_arrays(
+                [
+                    [1, 1, 2, 2],
+                    ["a", "a", "b", "b"],
+                    ["one", "two", "one", "two"],
+                ],
+                names=["id", "group", "year"],
+            ),
+        )
+
+        result = pd.wide_to_long(
+            df,
+            stubnames=["year", "score"],
+            i=["id", "group"],
+            j="year",
+            sep="_",
+            suffix=r"\w+",
+        )
+
+        tm.assert_frame_equal(result, expected)
+
+    def test_stubname_equal_j_no_matching_columns(self):
+        # GH 46939
+        df = pd.DataFrame({"id": [1, 2], "year1": [10, 20]})
+
+        result = pd.wide_to_long(df, stubnames="year", i="id", j="year", sep="_")
+
+        assert result.empty
+        assert result.index.names == ["id", "year"]
+        assert result.columns.equals(pd.Index(["year1", "year"]))
+
+    def test_j_equal_id_var_raises(self):
+        df = pd.DataFrame({"id": [1, 2], "A1": [10, 20]})
+
+        with pytest.raises(ValueError, match="duplicate names"):
+            pd.wide_to_long(df, stubnames="A", i="id", j="id")
+
 
 def test_wide_to_long_string_columns(string_storage):
     # GH 57066

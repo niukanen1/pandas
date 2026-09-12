@@ -629,24 +629,26 @@ def wide_to_long(
         regex = rf"^{re.escape(stub)}{re.escape(sep)}{suffix}$"
         return df.columns[df.columns.str.match(regex)]
 
-    def melt_stub(df, stub: str, i, j, value_vars, sep: str):
+    def melt_stub(df, stub: str, i, j_internal, value_vars, sep: str):
         newdf = melt(
             df,
             id_vars=i,
             value_vars=value_vars,
             value_name=stub.rstrip(sep),
-            var_name=j,
+            var_name=j_internal,
         )
-        newdf[j] = newdf[j].str.replace(re.escape(stub + sep), "", regex=True)
+        newdf[j_internal] = newdf[j_internal].str.replace(
+            re.escape(stub + sep), "", regex=True
+        )
 
         # GH17627 Cast numerics suffixes to int/float
         try:
-            newdf[j] = to_numeric(newdf[j])
+            newdf[j_internal] = to_numeric(newdf[j_internal])
         except (TypeError, ValueError, OverflowError):
             # TODO: anything else to catch?
             pass
 
-        return newdf.set_index([*i, j])
+        return newdf.set_index([*i, j_internal])
 
     if not is_list_like(stubnames):
         stubnames = [stubnames]
@@ -664,18 +666,26 @@ def wide_to_long(
     if df[i].duplicated().any():
         raise ValueError("the id variables need to uniquely identify each row")
 
+    if j in i:
+        raise ValueError(f"melt output columns cannot contain duplicate names: {[j]}")
+
+    j_internal = object()
     _melted = []
     value_vars_flattened = []
     for stub in stubnames:
         value_var = get_var_names(df, stub, sep, suffix)
         value_vars_flattened.extend(value_var)
-        _melted.append(melt_stub(df, stub, i, j, value_var, sep))
+        _melted.append(melt_stub(df, stub, i, j_internal, value_var, sep))
 
     melted = concat(_melted, axis=1)
     id_vars = df.columns.difference(value_vars_flattened)
     new = df[id_vars]
 
     if len(i) == 1:
-        return new.set_index(i).join(melted)
+        result = new.set_index(i).join(melted)
     else:
-        return new.merge(melted.reset_index(), on=i).set_index([*i, j])
+        result = new.merge(melted.reset_index(), on=i).set_index([*i, j_internal])
+
+    result.columns = result.columns.infer_objects(copy=False)
+    result.index = result.index.set_names(j, level=-1)
+    return result
