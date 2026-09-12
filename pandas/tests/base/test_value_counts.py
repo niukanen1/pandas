@@ -195,6 +195,54 @@ def test_value_counts_bins(index_or_series, using_infer_string):
     assert s.nunique() == 0
 
 
+@pytest.mark.parametrize(
+    "bins, expected_index",
+    [
+        (
+            2,
+            pd.IntervalIndex.from_tuples([(0.997, 2.0), (2.0, 3.0)]),
+        ),
+        (
+            [0, 2, 4],
+            pd.IntervalIndex.from_tuples([(-0.001, 2.0), (2.0, 4.0)]),
+        ),
+        (
+            pd.IntervalIndex.from_breaks([0, 2, 4]),
+            pd.IntervalIndex.from_breaks([0, 2, 4]),
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "dropna, expected_values",
+    [(True, [0.75, 0.25]), (False, [0.6, 0.2])],
+)
+def test_value_counts_bins_normalize_missing(
+    bins, expected_index, dropna, expected_values
+):
+    # GH#44946
+    ser = pd.Series([1, 1, 2, 3, pd.NA], dtype="Int64")
+
+    result = ser.value_counts(bins=bins, normalize=True, dropna=dropna, sort=False)
+
+    expected = pd.Series(expected_values, index=expected_index, name="proportion")
+    tm.assert_series_equal(result, expected)
+
+
+@pytest.mark.parametrize(
+    "dropna, expected_values",
+    [(True, [0.5, 0.5]), (False, [0.2, 0.2])],
+)
+def test_value_counts_bins_normalize_out_of_range(dropna, expected_values):
+    # GH#44946
+    ser = pd.Series([-1, 1, 3, 5, np.nan])
+
+    result = ser.value_counts(bins=[0, 2, 4], normalize=True, dropna=dropna, sort=False)
+
+    expected_index = pd.IntervalIndex.from_tuples([(-0.001, 2.0), (2.0, 4.0)])
+    expected = pd.Series(expected_values, index=expected_index, name="proportion")
+    tm.assert_series_equal(result, expected)
+
+
 def test_value_counts_datetime64(index_or_series, unit):
     klass = index_or_series
 
