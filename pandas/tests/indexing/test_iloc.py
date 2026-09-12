@@ -1,7 +1,10 @@
 """test positional based indexing with iloc"""
 
 from array import array as std_array
-from collections import deque
+from collections import (
+    deque,
+    namedtuple,
+)
 from datetime import datetime
 import re
 
@@ -155,6 +158,40 @@ class TestiLocBaseIndependent:
 
         df = ser.to_frame()
         assert df.iloc._is_scalar_access((1, 0))
+
+    def test_iloc_getitem_namedtuple(self):
+        # GH#48188
+        Indexer = namedtuple("Indexer", ["row", "column"])
+        df = pd.DataFrame(np.arange(20).reshape(4, 5))
+
+        assert df.iloc[Indexer(1, 2)] == 7
+
+        result = df.iloc[Indexer(slice(1, 3), 2)]
+        expected = pd.Series([7, 12], index=pd.RangeIndex(1, 3), name=2)
+        tm.assert_series_equal(result, expected)
+
+        result = df.iloc[Indexer(slice(1, 3), slice(1, 3))]
+        expected = pd.DataFrame([[6, 7], [11, 12]], index=[1, 2], columns=[1, 2])
+        tm.assert_frame_equal(result, expected)
+
+        result = df.iloc[Indexer([0, 2], [1, 3])]
+        expected = pd.DataFrame([[1, 3], [11, 13]], index=[0, 2], columns=[1, 3])
+        tm.assert_frame_equal(result, expected)
+
+        result = df.iloc[Indexer(lambda obj: [0, 2], lambda obj: [1, 3])]
+        tm.assert_frame_equal(result, expected)
+
+        result = df.copy()
+        result.iloc[Indexer([0, 2], 2)] = [-1, -2]
+        expected = pd.Series([-1, 7, -2, 17], name=2)
+        tm.assert_series_equal(result[2], expected)
+
+        with pytest.raises(IndexError, match="index 4 is out of bounds"):
+            df.iloc[Indexer(4, 0)]
+
+        ser = pd.Series(range(4))
+        with pytest.raises(IndexingError, match="Too many indexers"):
+            ser.iloc[Indexer(1, 2)]
 
     def test_iloc_exceeds_bounds(self):
         # GH6296
