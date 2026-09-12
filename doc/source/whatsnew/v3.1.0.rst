@@ -640,6 +640,7 @@ Performance improvements
 
 Bug fixes
 ~~~~~~~~~
+- Fixed a floating-point artifact in the leftmost interval label returned by :func:`cut` with ``right=True`` and ``include_lowest=True`` (:issue:`33912`)
 - Fixed bug in :class:`Index` repr where attributes were not wrapped to respect ``display.width`` (:issue:`11552`)
 - Fixed bug in :class:`Series` where empty frozensets were formatted incorrectly (:issue:`66192`)
 - Fixed bug in :func:`testing.assert_frame_equal` incorrectly raising when equivalent :class:`MultiIndex` column labels contained missing values (:issue:`54521`)

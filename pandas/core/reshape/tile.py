@@ -614,7 +614,7 @@ def _format_labels(
     else:
         precision = _infer_precision(precision, bins)
         formatter = lambda x: _round_frac(x, precision)
-        adjust = lambda x: x - 10 ** (-precision)
+        adjust = lambda x: _round_frac(x - 10 ** (-precision), precision)
 
     breaks = [formatter(b) for b in bins]
     if right and include_lowest:

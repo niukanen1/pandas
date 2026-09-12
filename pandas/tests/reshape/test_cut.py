@@ -235,6 +235,49 @@ def test_label_precision():
     tm.assert_index_equal(result.categories, ex_levels)
 
 
+def test_label_precision_include_lowest():
+    # GH#33912
+    values = np.array(
+        [1.195, 2.58, 4.79, 5.50, 6.75, 2.65, 6.60, 11.25, 3.78, 4.90, 5.21]
+    )
+    bins = np.histogram_bin_edges(values[1:], bins="sturges", range=(1.195, 12.875))
+
+    result, result_bins = pd.cut(
+        values,
+        bins,
+        right=True,
+        include_lowest=True,
+        precision=3,
+        retbins=True,
+    )
+
+    intervals = pd.IntervalIndex.from_breaks(
+        [1.194, 3.142, 5.088, 7.035, 8.982, 10.928, 12.875]
+    )
+    expected = pd.Categorical.from_codes(
+        [0, 0, 1, 2, 2, 0, 2, 5, 1, 1, 2], intervals, ordered=True
+    )
+    tm.assert_categorical_equal(result, expected)
+    tm.assert_numpy_array_equal(result_bins, bins)
+
+
+@pytest.mark.parametrize(
+    "bins, expected_breaks",
+    [
+        ([0, 1, 2], [-0.001, 1, 2]),
+        ([-1.195, 0, 1], [-1.196, 0, 1]),
+        ([0.0001, 0.0002, 0.0003], [-0.0009, 0.0002, 0.0003]),
+        ([1.2345, 1.2346, 1.2347], [1.2344, 1.2346, 1.2347]),
+    ],
+)
+def test_label_precision_include_lowest_bounds(bins, expected_breaks):
+    result = pd.cut([bins[0]], bins, include_lowest=True, precision=3)
+
+    expected = pd.IntervalIndex.from_breaks(expected_breaks)
+    tm.assert_index_equal(result.categories, expected)
+    assert result.codes[0] == 0
+
+
 @pytest.mark.parametrize("labels", [None, False])
 def test_na_handling(labels):
     arr = np.arange(0, 0.75, 0.01)
