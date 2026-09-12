@@ -228,6 +228,16 @@ class TestDataFrameInterpolate:
         expected.loc[13, "A"] = 5
         tm.assert_frame_equal(result, expected, check_dtype=False)
 
+    @pytest.mark.parametrize("values", [[np.nan, 1.0], [1.0, np.nan]])
+    def test_interp_nearest_single_valid_value(self, frame_or_series, values):
+        # GH#46230
+        pytest.importorskip("scipy")
+        obj = frame_or_series(pd.Series(values, name="a"))
+
+        result = obj.interpolate(method="nearest")
+
+        tm.assert_equal(result, obj)
+
     def test_interp_alt_scipy(self):
         pytest.importorskip("scipy")
         df = pd.DataFrame(
